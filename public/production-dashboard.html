@@ -1,0 +1,1096 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scanner Production Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <style>
+        .card {
+            margin-bottom: 20px;
+            transition: all 0.2s ease;
+        }
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+        .scanner-card {
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .scanner-card:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        .table-responsive {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .badge-live {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        .valid-data {
+            background-color: rgba(40, 167, 69, 0.1);
+        }
+        .invalid-data {
+            background-color: rgba(220, 53, 69, 0.1);
+        }
+        .last-refresh {
+            font-size: 0.8rem;
+            color: #6c757d;
+        }
+        .stats-card {
+            height: 100%;
+        }
+        .stats-card:hover {
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        .filter-section {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+        .nav-tabs .nav-link {
+            color: #495057;
+        }
+        .nav-tabs .nav-link.active {
+            font-weight: bold;
+            color: #212529;
+        }
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255, 255, 255, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .chart-wrapper {
+            position: relative;
+        }
+        .filter-badge {
+            display: inline-block;
+            background-color: #e9ecef;
+            padding: 0.25rem 0.5rem;
+            margin-right: 0.5rem;
+            margin-bottom: 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.875rem;
+        }
+        .filter-badge .close {
+            margin-left: 0.5rem;
+            font-size: 0.875rem;
+            cursor: pointer;
+        }
+        .date-range-picker {
+            background-color: #fff;
+            cursor: pointer;
+            padding: 5px 10px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            width: 100%;
+        }
+        .debug-info {
+            font-family: monospace;
+            font-size: 0.8rem;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            margin-top: 10px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid mt-4">
+        <h1 class="mb-4">Scanner Production Dashboard</h1>
+        <nav class="mb-4">
+            <a href="/dashboard/connection-monitor" class="btn btn-secondary">Connection Monitor</a>
+            <a href="/dashboard/production" class="btn btn-primary">Production Dashboard</a>
+        </nav>
+        
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+                <span class="badge bg-success badge-live">LIVE</span>
+                <span class="last-refresh ms-2">Last refreshed: <span id="lastRefreshTime">Just now</span></span>
+            </div>
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="autoRefreshToggle" checked>
+                <label class="form-check-label" for="autoRefreshToggle">Auto-refresh (5s)</label>
+            </div>
+        </div>
+        
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Production Overview</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row" id="production-totals">
+                            <div class="text-center">
+                                <div class="spinner-border" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="card-title mb-0">Production Data</h5>
+                        <div>
+                            <label for="dateRange" class="form-label me-2">Date Range:</label>
+                            <select id="dateRange" class="form-select form-select-sm d-inline-block" style="width: auto;">
+                                <option value="7">Last 7 days</option>
+                                <option value="30">Last 30 days</option>
+                                <option value="90">Last 90 days</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-wrapper mb-4">
+                            <div class="chart-container">
+                                <canvas id="productionChart"></canvas>
+                            </div>
+                            <div id="chartLoading" class="loading-overlay" style="display: none;">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover" id="productionTable">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Scanner</th>
+                                        <th>Valid</th>
+                                        <th>Invalid</th>
+                                        <th>Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Table body will be populated dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for detailed scanner data -->
+    <div class="modal fade" id="scannerDetailModal" tabindex="-1" aria-labelledby="scannerDetailModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="scannerDetailModalLabel">Scanner Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <ul class="nav nav-tabs" id="scannerDetailTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="summary-tab" data-bs-toggle="tab" data-bs-target="#summary" type="button" role="tab" aria-controls="summary" aria-selected="true">Summary</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="detailed-tab" data-bs-toggle="tab" data-bs-target="#detailed" type="button" role="tab" aria-controls="detailed" aria-selected="false">Line Items</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="stats-tab" data-bs-toggle="tab" data-bs-target="#stats" type="button" role="tab" aria-controls="stats" aria-selected="false">Statistics</button>
+                        </li>
+                    </ul>
+                    <div class="tab-content mt-3" id="scannerDetailTabContent">
+                        <div class="tab-pane fade show active" id="summary" role="tabpanel" aria-labelledby="summary-tab">
+                            <div class="table-responsive">
+                                <table class="table table-striped" id="scannerDetailTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Date</th>
+                                            <th>Valid</th>
+                                            <th>Invalid</th>
+                                            <th>Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <!-- Table body will be populated dynamically -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="detailed" role="tabpanel" aria-labelledby="detailed-tab">
+                            <div class="filter-section">
+                                <div class="row">
+                                    <div class="col-md-12 mb-2">
+                                        <label for="dateFilter" class="form-label">Date Range:</label>
+                                        <input type="text" id="dateFilter" class="date-range-picker" placeholder="Select date range">
+                                    </div>
+                                </div>
+                                <div class="row mt-2">
+                                    <div class="col-12">
+                                        <button id="applyFiltersBtn" class="btn btn-primary btn-sm">Apply Date Filter</button>
+                                        <button id="resetFiltersBtn" class="btn btn-outline-secondary btn-sm ms-2">Reset</button>
+                                        <div id="activeFilters" class="mt-2"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="lineItemsLoading" class="text-center my-3" style="display: none;">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-striped table-hover" id="detailedDataTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Timestamp</th>
+                                            <th>Line</th>
+                                            <th>Shift</th>
+                                            <th>Batch Code</th>
+                                            <th>Material Code</th>
+                                            <th>Carton Serial</th>
+                                            <th>Status</th>
+                                            <th>Raw Data</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <!-- Table body will be populated dynamically -->
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center mt-3">
+                                <button class="btn btn-primary" id="loadMoreBtn" disabled>Load More</button>
+                                <span id="recordsInfo">Showing 0 records</span>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="stats" role="tabpanel" aria-labelledby="stats-tab">
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <div class="card stats-card">
+                                        <div class="card-header">
+                                            <h6 class="card-title mb-0">Production by Line</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="chart-container">
+                                                <canvas id="lineStatsChart"></canvas>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <div class="card stats-card">
+                                        <div class="card-header">
+                                            <h6 class="card-title mb-0">Production by Shift</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="chart-container">
+                                                <canvas id="shiftStatsChart"></canvas>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <div class="card stats-card">
+                                        <div class="card-header">
+                                            <h6 class="card-title mb-0">Top Batch Codes</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="chart-container">
+                                                <canvas id="batchStatsChart"></canvas>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <div class="card stats-card">
+                                        <div class="card-header">
+                                            <h6 class="card-title mb-0">Top Material Codes</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="chart-container">
+                                                <canvas id="materialStatsChart"></canvas>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Global variables
+        let productionChart = null;
+        let lineStatsChart = null;
+        let shiftStatsChart = null;
+        let batchStatsChart = null;
+        let materialStatsChart = null;
+        let productionData = null;
+        let currentScannerId = null;
+        let detailedDataSkip = 0;
+        let detailedDataTotal = 0;
+        let detailedDataLimit = 100;
+        let autoRefreshInterval = null;
+        let lastRefreshTime = new Date();
+        let dateRangePicker = null;
+        let currentFilters = {
+            startDate: null,
+            endDate: null
+        };
+        let isLoadingMore = false;
+
+        // Utility functions
+        function formatNumber(num) {
+            if (num === undefined || num === null) return '0';
+            return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+        }
+
+        function formatDate(dateString) {
+            const options = { year: 'numeric', month: 'short', day: 'numeric' };
+            return new Date(dateString).toLocaleDateString(undefined, options);
+        }
+
+        function formatDateTime(dateString) {
+            const options = { 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            };
+            return new Date(dateString).toLocaleString(undefined, options);
+        }
+
+        function formatTimeElapsed(timestamp) {
+            const now = new Date();
+            const then = new Date(timestamp);
+            const diffMs = now - then;
+            
+            const diffSecs = Math.floor(diffMs / 1000);
+            if (diffSecs < 60) return `${diffSecs} seconds ago`;
+            
+            const diffMins = Math.floor(diffSecs / 60);
+            if (diffMins < 60) return `${diffMins} minutes ago`;
+            
+            const diffHours = Math.floor(diffMins / 60);
+            if (diffHours < 24) return `${diffHours} hours ago`;
+            
+            const diffDays = Math.floor(diffHours / 24);
+            return `${diffDays} days ago`;
+        }
+
+        function updateLastRefreshTime() {
+            document.getElementById('lastRefreshTime').textContent = formatTimeElapsed(lastRefreshTime);
+        }
+
+        function startAutoRefresh() {
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+            }
+            
+            autoRefreshInterval = setInterval(() => {
+                if (document.getElementById('autoRefreshToggle').checked) {
+                    refreshDashboard();
+                }
+            }, 5000);
+        }
+
+        function showLoading(elementId) {
+            document.getElementById(elementId).style.display = 'flex';
+        }
+
+        function hideLoading(elementId) {
+            document.getElementById(elementId).style.display = 'none';
+        }  {
+            document.getElementById(elementId).style.display = 'none';
+        }
+
+        function updateActiveFilters() {
+            const activeFiltersContainer = document.getElementById('activeFilters');
+            activeFiltersContainer.innerHTML = '';
+            
+            // Date range filter
+            if (currentFilters.startDate && currentFilters.endDate) {
+                const dateRangeFilter = document.createElement('span');
+                dateRangeFilter.className = 'filter-badge';
+                dateRangeFilter.innerHTML = `Date: ${formatDate(currentFilters.startDate)} - ${formatDate(currentFilters.endDate)} <span class="close" data-filter="date">&times;</span>`;
+                activeFiltersContainer.appendChild(dateRangeFilter);
+                
+                // Add event listener to close button
+                dateRangeFilter.querySelector('.close').addEventListener('click', function() {
+                    currentFilters.startDate = null;
+                    currentFilters.endDate = null;
+                    dateRangePicker.clear();
+                    updateActiveFilters();
+                    applyFilters();
+                });
+            }
+        }
+
+        // Data fetching functions
+        async function refreshDashboard() {
+            await fetchProductionTotals();
+            const days = parseInt(document.getElementById('dateRange').value);
+            await updateDashboard(days);
+            lastRefreshTime = new Date();
+            updateLastRefreshTime();
+        }
+
+        async function fetchProductionTotals() {
+            try {
+                const response = await fetch('/api/production-totals');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                const totalsContainer = document.getElementById('production-totals');
+                let html = '';
+                
+                for (const [scannerId, totals] of Object.entries(data)) {
+                    const total = totals.totalValid + totals.totalInvalid;
+                    const validPercentage = total > 0 ? ((totals.totalValid / total) * 100).toFixed(2) : 0;
+                    
+                    html += `
+                        <div class="col-md-3 mb-3">
+                            <div class="card scanner-card" data-scanner-id="${scannerId}">
+                                <div class="card-body">
+                                    <h5 class="card-title">${scannerId}</h5>
+                                    <p class="card-text">
+                                        Total: ${formatNumber(total)}<br>
+                                        Valid: ${formatNumber(totals.totalValid)} (${validPercentage}%)<br>
+                                        Invalid: ${formatNumber(totals.totalInvalid)}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                totalsContainer.innerHTML = html;
+
+                // Add click event listeners to scanner cards
+                document.querySelectorAll('.scanner-card').forEach(card => {
+                    card.addEventListener('click', () => {
+                        const scannerId = card.getAttribute('data-scanner-id');
+                        showScannerDetails(scannerId);
+                    });
+                });
+            } catch (error) {
+                console.error('Error fetching production totals:', error);
+                document.getElementById('production-totals').innerHTML = `
+                    <div class="col-12">
+                        <div class="alert alert-danger">
+                            Error loading production totals. Please try refreshing the page.
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        async function fetchProductionData(days) {
+            try {
+                showLoading('chartLoading');
+                const endDate = new Date();
+                const startDate = new Date();
+                startDate.setDate(startDate.getDate() - days);
+                
+                const response = await fetch(`/api/production-data?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                
+                productionData = await response.json();
+                hideLoading('chartLoading');
+                
+                return productionData;
+            } catch (error) {
+                console.error('Error fetching production data:', error);
+                hideLoading('chartLoading');
+                return null;
+            }
+        }
+
+        async function fetchLineItemData(scannerId, skip = 0, limit = 100) {
+            try {
+                let url = `/api/line-items?skip=${skip}&limit=${limit}`;
+                
+                if (scannerId) url += `&scannerId=${encodeURIComponent(scannerId)}`;
+                if (currentFilters.startDate) url += `&startDate=${encodeURIComponent(currentFilters.startDate.toISOString())}`;
+                if (currentFilters.endDate) url += `&endDate=${encodeURIComponent(currentFilters.endDate.toISOString())}`;
+                
+                console.log('Fetching data with URL:', url);
+                
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                console.log('Received data:', { 
+                    count: data.data.length, 
+                    total: data.pagination.total,
+                    skip: data.pagination.skip,
+                    limit: data.pagination.limit,
+                    hasMore: data.pagination.hasMore
+                });
+                
+                return data;
+            } catch (error) {
+                console.error(`Error fetching line item data:`, error);
+                return null;
+            }
+        }
+
+        async function fetchLineItemStats(scannerId) {
+            try {
+                const days = parseInt(document.getElementById('dateRange').value);
+                const endDate = new Date();
+                const startDate = new Date();
+                startDate.setDate(startDate.getDate() - days);
+                
+                let url = `/api/line-item-stats?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`;
+                if (scannerId) url += `&scannerId=${encodeURIComponent(scannerId)}`;
+                
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                return data;
+            } catch (error) {
+                console.error(`Error fetching line item stats:`, error);
+                return null;
+            }
+        }
+
+        // Chart and visualization functions
+        function createProductionChart(data) {
+            const ctx = document.getElementById('productionChart').getContext('2d');
+            
+            const datasets = [];
+            const scannerIds = Object.keys(data);
+            
+            scannerIds.forEach((scannerId, index) => {
+                const hue = (index * 137) % 360;
+                const validColor = `hsl(${hue}, 70%, 60%)`;
+                const invalidColor = `hsl(${hue}, 70%, 40%)`;
+                
+                datasets.push({
+                    label: `${scannerId} (Valid)`,
+                    data: data[scannerId].map(day => ({ x: day.date, y: day.validCount })),
+                    borderColor: validColor,
+                    backgroundColor: validColor,
+                    fill: false
+                });
+                
+                datasets.push({
+                    label: `${scannerId} (Invalid)`,
+                    data: data[scannerId].map(day => ({ x: day.date, y: day.invalidCount })),
+                    borderColor: invalidColor,
+                    backgroundColor: invalidColor,
+                    fill: false
+                });
+            });
+            
+            if (productionChart) {
+                productionChart.destroy();
+            }
+            
+            productionChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'day'
+                            },
+                            title: {
+                                display: true,
+                                text: 'Date'
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Production Count'
+                            }
+                        }
+                    },
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Scanner Production Data'
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false
+                        }
+                    }
+                }
+            });
+        }
+
+        function createStatsCharts(stats) {
+            // Line stats chart
+            const lineCtx = document.getElementById('lineStatsChart').getContext('2d');
+            const lineLabels = stats.lineStats.map(item => item._id || 'Unknown');
+            const lineData = stats.lineStats.map(item => item.count);
+            
+            if (lineStatsChart) lineStatsChart.destroy();
+            
+            lineStatsChart = new Chart(lineCtx, {
+                type: 'bar',
+                data: {
+                    labels: lineLabels,
+                    datasets: [{
+                        label: 'Production Count',
+                        data: lineData,
+                        backgroundColor: 'rgba(54, 162, 235, 0.7)',
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+            
+            // Shift stats chart
+            const shiftCtx = document.getElementById('shiftStatsChart').getContext('2d');
+            const shiftLabels = stats.shiftStats.map(item => item._id || 'Unknown');
+            const shiftData = stats.shiftStats.map(item => item.count);
+            
+            if (shiftStatsChart) shiftStatsChart.destroy();
+            
+            shiftStatsChart = new Chart(shiftCtx, {
+                type: 'pie',
+                data: {
+                    labels: shiftLabels,
+                    datasets: [{
+                        data: shiftData,
+                        backgroundColor: [
+                            'rgba(255, 99, 132, 0.7)',
+                            'rgba(54, 162, 235, 0.7)',
+                            'rgba(255, 206, 86, 0.7)',
+                            'rgba(75, 192, 192, 0.7)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+            
+            // Batch stats chart
+            const batchCtx = document.getElementById('batchStatsChart').getContext('2d');
+            // Limit to top 10 batches
+            const topBatches = stats.batchStats.slice(0, 10);
+            const batchLabels = topBatches.map(item => item._id || 'Unknown');
+            const batchData = topBatches.map(item => item.count);
+            
+            if (batchStatsChart) batchStatsChart.destroy();
+            
+            batchStatsChart = new Chart(batchCtx, {
+                type: 'bar',
+                data: {
+                    labels: batchLabels,
+                    datasets: [{
+                        label: 'Production Count',
+                        data: batchData,
+                        backgroundColor: 'rgba(75, 192, 192, 0.7)',
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+            
+            // Material stats chart
+            const materialCtx = document.getElementById('materialStatsChart').getContext('2d');
+            // Limit to top 10 materials
+            const topMaterials = stats.materialStats.slice(0, 10);
+            const materialLabels = topMaterials.map(item => item._id || 'Unknown');
+            const materialData = topMaterials.map(item => item.count);
+            
+            if (materialStatsChart) materialStatsChart.destroy();
+            
+            materialStatsChart = new Chart(materialCtx, {
+                type: 'bar',
+                data: {
+                    labels: materialLabels,
+                    datasets: [{
+                        label: 'Production Count',
+                        data: materialData,
+                        backgroundColor: 'rgba(153, 102, 255, 0.7)',
+                        borderColor: 'rgba(153, 102, 255, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateProductionTable(data) {
+            const tableBody = document.getElementById('productionTable').getElementsByTagName('tbody')[0];
+            tableBody.innerHTML = '';
+
+            const scannerIds = Object.keys(data);
+            const allDates = new Set();
+
+            // Collect all unique dates
+            scannerIds.forEach(scannerId => {
+                data[scannerId].forEach(day => allDates.add(day.date));
+            });
+
+            const sortedDates = Array.from(allDates).sort((a, b) => new Date(b) - new Date(a));
+
+            sortedDates.forEach(date => {
+                scannerIds.forEach(scannerId => {
+                    const dayData = data[scannerId].find(day => day.date === date);
+                    if (dayData) {
+                        const row = tableBody.insertRow();
+                        row.innerHTML = `
+                            <td>${formatDate(date)}</td>
+                            <td>${scannerId}</td>
+                            <td>${formatNumber(dayData.validCount)}</td>
+                            <td>${formatNumber(dayData.invalidCount)}</td>
+                            <td>${formatNumber(dayData.validCount + dayData.invalidCount)}</td>
+                        `;
+                    }
+                });
+            });
+        }
+
+        function parseRawData(rawData) {
+            if (!rawData) return { isValid: false, parts: [] };
+            
+            const parts = rawData.split(',');
+            if (parts.length !== 5) {
+                return { isValid: false, parts: parts };
+            }
+            
+            return {
+                isValid: true,
+                lineNumber: parts[0],
+                shift: parts[1],
+                batchCode: parts[2],
+                materialCode: parts[3],
+                cartonSerial: parts[4]
+            };
+        }
+
+        // UI interaction functions
+        async function showScannerDetails(scannerId) {
+            currentScannerId = scannerId;
+            resetFilters();
+            detailedDataSkip = 0;
+            
+            const modalTitle = document.getElementById('scannerDetailModalLabel');
+            const summaryTableBody = document.getElementById('scannerDetailTable').getElementsByTagName('tbody')[0];
+            
+            modalTitle.textContent = `Scanner Details - ${scannerId}`;
+            summaryTableBody.innerHTML = '';
+
+            if (productionData && productionData[scannerId]) {
+                productionData[scannerId].forEach(day => {
+                    const row = summaryTableBody.insertRow();
+                    row.innerHTML = `
+                        <td>${formatDate(day.date)}</td>
+                        <td>${formatNumber(day.validCount)}</td>
+                        <td>${formatNumber(day.invalidCount)}</td>
+                        <td>${formatNumber(day.validCount + day.invalidCount)}</td>
+                    `;
+                });
+            }
+
+            // Reset the detailed tab
+            document.getElementById('detailedDataTable').getElementsByTagName('tbody')[0].innerHTML = '';
+            document.getElementById('loadMoreBtn').disabled = true;
+            document.getElementById('recordsInfo').textContent = 'Showing 0 records';
+            
+            // Load detailed data
+            await loadDetailedData(scannerId);
+            
+            // Load statistics
+            await loadStatistics(scannerId);
+            
+            // Show the modal
+            const modal = new bootstrap.Modal(document.getElementById('scannerDetailModal'));
+            modal.show();
+        }
+
+        async function loadDetailedData(scannerId, isLoadMore = false) {
+            if (isLoadingMore) return;
+            isLoadingMore = true;
+            
+            const detailedTableBody = document.getElementById('detailedDataTable').getElementsByTagName('tbody')[0];
+            const loadMoreBtn = document.getElementById('loadMoreBtn');
+            
+            if (!isLoadMore) {
+                detailedTableBody.innerHTML = `
+                    <tr>
+                        <td colspan="8" class="text-center">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+                loadMoreBtn.disabled = true;
+            }
+            
+            showLoading('lineItemsLoading');
+            
+            try {
+                const data = await fetchLineItemData(scannerId, detailedDataSkip, detailedDataLimit);
+                
+                hideLoading('lineItemsLoading');
+                
+                if (!data) {
+                    if (!isLoadMore) {
+                        detailedTableBody.innerHTML = `
+                            <tr>
+                                <td colspan="8" class="text-center">Error loading data. Please try again.</td>
+                            </tr>
+                        `;
+                    }
+                    isLoadingMore = false;
+                    return;
+                }
+                
+                if (!isLoadMore) {
+                    detailedTableBody.innerHTML = '';
+                }
+                
+                detailedDataTotal = data.pagination.total;
+                
+                if (data.data.length === 0) {
+                    if (!isLoadMore) {
+                        detailedTableBody.innerHTML = `
+                            <tr>
+                                <td colspan="8" class="text-center">No data found matching the selected date range</td>
+                            </tr>
+                        `;
+                    }
+                    loadMoreBtn.disabled = true;
+                    document.getElementById('recordsInfo').textContent = isLoadMore 
+                        ? `Showing ${detailedDataSkip} of ${detailedDataTotal} records` 
+                        : `Showing 0 records`;
+                    isLoadingMore = false;
+                    return;
+                }
+                
+                data.data.forEach(item => {
+                    const parsedData = item.parsedData || parseRawData(item.rawData);
+                    const isValid = item.isValid;
+                    
+                    const row = detailedTableBody.insertRow();
+                    row.className = isValid ? 'valid-data' : 'invalid-data';
+                    
+                    if (parsedData && isValid) {
+                        row.innerHTML = `
+                            <td>${formatDateTime(item.timestamp)}</td>
+                            <td>${parsedData.lineNumber || '-'}</td>
+                            <td>${parsedData.shift || '-'}</td>
+                            <td>${parsedData.batchCode || '-'}</td>
+                            <td>${parsedData.materialCode || '-'}</td>
+                            <td>${parsedData.cartonSerial || '-'}</td>
+                            <td><span class="badge bg-success">Valid</span></td>
+                            <td><code>${item.rawData}</code></td>
+                        `;
+                    } else {
+                        row.innerHTML = `
+                            <td>${formatDateTime(item.timestamp)}</td>
+                            <td colspan="5">${item.errorMessage || 'Invalid data format'}</td>
+                            <td><span class="badge bg-danger">Invalid</span></td>
+                            <td><code>${item.rawData || ''}</code></td>
+                        `;
+                    }
+                });
+                
+                // Update records info
+                const currentRows = detailedTableBody.rows.length;
+                const start = currentRows > 0 ? detailedDataSkip + 1 : 0;
+                const end = detailedDataSkip + currentRows;
+                document.getElementById('recordsInfo').textContent = `Showing ${start}-${end} of ${detailedDataTotal} records`;
+                
+                // Update load more button state
+                loadMoreBtn.disabled = end >= detailedDataTotal;
+                
+            } catch (error) {
+                console.error('Error loading detailed data:', error);
+                hideLoading('lineItemsLoading');
+                if (!isLoadMore) {
+                    detailedTableBody.innerHTML = `
+                        <tr>
+                            <td colspan="8" class="text-center">Error loading data. Please try again.</td>
+                        </tr>
+                    `;
+                }
+            } finally {
+                isLoadingMore = false;
+            }
+        }
+
+        async function loadStatistics(scannerId) {
+            try {
+                const stats = await fetchLineItemStats(scannerId);
+                if (!stats || !stats[scannerId]) return;
+                
+                createStatsCharts(stats[scannerId]);
+            } catch (error) {
+                console.error('Error loading statistics:', error);
+            }
+        }
+
+        async function updateDashboard(days) {
+            const data = await fetchProductionData(days);
+            if (data) {
+                createProductionChart(data);
+                updateProductionTable(data);
+            }
+        }
+
+        function resetFilters() {
+            currentFilters = {
+                startDate: null,
+                endDate: null
+            };
+            
+            if (dateRangePicker) {
+                dateRangePicker.clear();
+            }
+            
+            updateActiveFilters();
+        }
+
+        function applyFilters() {
+            detailedDataSkip = 0;
+            const detailedTableBody = document.getElementById('detailedDataTable').getElementsByTagName('tbody')[0];
+            detailedTableBody.innerHTML = '';
+            loadDetailedData(currentScannerId, false);
+        }
+
+        // Event listeners and initialization
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Initialize date range picker
+            dateRangePicker = flatpickr('#dateFilter', {
+                mode: 'range',
+                dateFormat: 'Y-m-d',
+                onChange: function(selectedDates) {
+                    if (selectedDates.length === 2) {
+                        currentFilters.startDate = selectedDates[0];
+                        currentFilters.endDate = selectedDates[1];
+                        updateActiveFilters();
+                    }
+                }
+            });
+            
+            // Initial data load
+            await refreshDashboard();
+            
+            // Set up auto-refresh
+            startAutoRefresh();
+            setInterval(updateLastRefreshTime, 10000);
+            
+            // Set up event listeners
+            document.getElementById('dateRange').addEventListener('change', (event) => {
+                updateDashboard(parseInt(event.target.value));
+            });
+            
+            document.getElementById('autoRefreshToggle').addEventListener('change', (event) => {
+                if (event.target.checked) {
+                    startAutoRefresh();
+                } else {
+                    clearInterval(autoRefreshInterval);
+                }
+            });
+            
+            document.getElementById('loadMoreBtn').addEventListener('click', async () => {
+                if (!isLoadingMore) {
+                    detailedDataSkip += detailedDataLimit;
+                    await loadDetailedData(currentScannerId, true);
+                }
+            });
+            
+            document.getElementById('applyFiltersBtn').addEventListener('click', async () => {
+                updateActiveFilters();
+                applyFilters();
+            });
+            
+            document.getElementById('resetFiltersBtn').addEventListener('click', () => {
+                resetFilters();
+                applyFilters();
+            });
+            
+            // Tab change event
+            document.getElementById('scannerDetailTabs').addEventListener('shown.bs.tab', function (event) {
+                if (event.target.id === 'stats-tab') {
+                    // Refresh charts when switching to stats tab
+                    loadStatistics(currentScannerId);
+                }
+            });
+        });
+    </script>
+</body>
+</html>
+
