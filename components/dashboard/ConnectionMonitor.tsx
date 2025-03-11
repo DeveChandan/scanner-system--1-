@@ -9,8 +9,29 @@ import { RefreshCw } from "lucide-react"
 import { format } from "date-fns"
 import { API_URL } from "@/app/config"
 
+// Define types for the data structure
+interface Status {
+  status: string
+  lastStatusChange: string | Date
+  ipAddress?: string
+  port?: string | number
+}
+
+interface Disconnection {
+  scannerId: string
+  timestamp: string | Date
+  errorMessage?: string
+  reconnectAttempts: number
+}
+
+interface ConnectionData {
+  currentStatus: Record<string, Status>
+  recentDisconnections: Disconnection[]
+}
+
 export default function ConnectionMonitor() {
-  const [data, setData] = useState(null)
+  // Type the state as either ConnectionData or null (initially)
+  const [data, setData] = useState<ConnectionData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [lastRefresh, setLastRefresh] = useState(new Date())
 
@@ -34,9 +55,10 @@ export default function ConnectionMonitor() {
         historyResponse.json()
       ])
 
+      // Update the state with the proper data structure
       setData({
         currentStatus: statusData,
-        recentDisconnections: historyData.history.filter((item) => item.status === "disconnected")
+        recentDisconnections: historyData.history.filter((item: any) => item.status === "disconnected")
       })
       setLastRefresh(new Date())
     } catch (error) {
@@ -52,7 +74,7 @@ export default function ConnectionMonitor() {
     return () => clearInterval(interval)
   }, [fetchData])
 
-  const handleReconnect = async (scannerId) => {
+  const handleReconnect = async (scannerId: string) => {
     try {
       const response = await fetch(`${API_URL}/api/scanners/${scannerId}/reconnect`, {
         method: "POST",
@@ -75,10 +97,10 @@ export default function ConnectionMonitor() {
     }
   }
 
-  const formatTimeElapsed = (timestamp) => {
+  const formatTimeElapsed = (timestamp: string | Date) => {
     const now = new Date()
     const then = new Date(timestamp)
-    const diffMs = now - then
+    const diffMs = now.getTime() - then.getTime()
 
     const diffSecs = Math.floor(diffMs / 1000)
     if (diffSecs < 60) return `${diffSecs} seconds ago`

@@ -1,18 +1,34 @@
 "use client"
 
 import { useEffect, useRef } from "react"
-import { Chart, registerables } from "chart.js"
-import 'chartjs-adapter-date-fns'  // Import the date adapter
+import { Chart, registerables, ChartDataset } from "chart.js"
+import 'chartjs-adapter-date-fns'
 
 // Register Chart.js components
 Chart.register(...registerables)
 
-export default function ProductionChart({ data, isLoading }) {
-  const chartRef = useRef(null)
-  const chartInstance = useRef(null)
+// Define types for your chart data
+interface ProductionChartDataItem {
+  date: string | Date
+  validCount: number
+  invalidCount: number
+}
+
+interface ProductionChartData {
+  [scannerId: string]: ProductionChartDataItem[]
+}
+
+interface ProductionChartProps {
+  data: ProductionChartData | null
+  isLoading: boolean
+}
+
+export default function ProductionChart({ data, isLoading }: ProductionChartProps) {
+  const chartRef = useRef<HTMLCanvasElement>(null)
+  const chartInstance = useRef<Chart | null>(null)
 
   useEffect(() => {
-    // Clean up previous chart instance
+    // Clean up any existing chart instance
     if (chartInstance.current) {
       chartInstance.current.destroy()
     }
@@ -22,7 +38,9 @@ export default function ProductionChart({ data, isLoading }) {
     const ctx = chartRef.current.getContext("2d")
     if (!ctx) return
 
-    const datasets = []
+    // Explicitly type the datasets array for a line chart.
+    // Data points now have x as a number (timestamp) and y as a number.
+    const datasets: ChartDataset<"line", { x: number; y: number }[]>[] = []
     const scannerIds = Object.keys(data)
 
     scannerIds.forEach((scannerId, index) => {
@@ -30,10 +48,11 @@ export default function ProductionChart({ data, isLoading }) {
       const validColor = `hsl(${hue}, 70%, 60%)`
       const invalidColor = `hsl(${hue}, 70%, 40%)`
 
+      // Convert the x value to a numeric timestamp.
       datasets.push({
         label: `${scannerId} (Valid)`,
         data: data[scannerId].map((day) => ({
-          x: day.date,
+          x: new Date(day.date).getTime(),
           y: day.validCount,
         })),
         borderColor: validColor,
@@ -44,7 +63,7 @@ export default function ProductionChart({ data, isLoading }) {
       datasets.push({
         label: `${scannerId} (Invalid)`,
         data: data[scannerId].map((day) => ({
-          x: day.date,
+          x: new Date(day.date).getTime(),
           y: day.invalidCount,
         })),
         borderColor: invalidColor,

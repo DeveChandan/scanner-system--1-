@@ -58,6 +58,7 @@ export function Sidebar() {
         <div className="text-xs text-muted-foreground">
           <p>Scanner System v1.0.0</p>
           <p>© 2025 All rights reserved</p>
+          <p>Powered By Vertif it solutions </p>
         </div>
       </div>
     </div>

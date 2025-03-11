@@ -1,42 +1,66 @@
-"use client"
+"use client";
 
-import { useEffect, useRef } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Chart, registerables } from "chart.js"
+import { useEffect, useRef } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Chart, registerables } from "chart.js";
 
 // Register Chart.js components
-Chart.register(...registerables)
+Chart.register(...registerables);
 
-export default function StatisticsCharts({ stats }) {
+interface StatItem {
+  _id?: string | null;
+  count: number;
+}
+
+interface Stats {
+  lineStats: StatItem[];
+  shiftStats: StatItem[];
+  batchStats: StatItem[];
+  materialStats: StatItem[];
+}
+
+interface StatisticsChartsProps {
+  stats: Stats | null;
+}
+
+export default function StatisticsCharts({ stats }: StatisticsChartsProps) {
   const chartRefs = {
-    line: useRef(null),
-    shift: useRef(null),
-    batch: useRef(null),
-    material: useRef(null),
-  }
+    line: useRef<HTMLCanvasElement>(null),
+    shift: useRef<HTMLCanvasElement>(null),
+    batch: useRef<HTMLCanvasElement>(null),
+    material: useRef<HTMLCanvasElement>(null),
+  };
 
   const chartInstances = {
-    line: useRef(null),
-    shift: useRef(null),
-    batch: useRef(null),
-    material: useRef(null),
-  }
+    line: useRef<Chart | null>(null),
+    shift: useRef<Chart | null>(null),
+    batch: useRef<Chart | null>(null),
+    material: useRef<Chart | null>(null),
+  };
 
   useEffect(() => {
-    if (!stats) return
+    if (!stats) return;
 
     // Clean up previous chart instances
     Object.values(chartInstances).forEach((instanceRef) => {
       if (instanceRef.current) {
-        instanceRef.current.destroy()
-        instanceRef.current = null
+        instanceRef.current.destroy();
+        instanceRef.current = null;
       }
-    })
+    });
 
     // Helper function to create a chart
-    const createChart = (ref, type, labels, data, backgroundColor, borderColor) => {
+    const createChart = (
+      ref: React.RefObject<HTMLCanvasElement | null>,
+      type: "bar" | "pie",
+      labels: (string | number)[],
+      data: number[],
+      backgroundColor: string | string[],
+      borderColor?: string | string[]
+    ) => {
       if (ref.current) {
-        const ctx = ref.current.getContext("2d")
+        const ctx = ref.current.getContext("2d");
+        if (!ctx) return null;
         return new Chart(ctx, {
           type,
           data: {
@@ -60,12 +84,12 @@ export default function StatisticsCharts({ stats }) {
               },
             },
           },
-        })
+        });
       }
-      return null
-    }
+      return null;
+    };
 
-    // Create charts
+    // Create charts for each statistics group
     chartInstances.line.current = createChart(
       chartRefs.line,
       "bar",
@@ -73,18 +97,22 @@ export default function StatisticsCharts({ stats }) {
       stats.lineStats.map((item) => item.count),
       "rgba(54, 162, 235, 0.7)",
       "rgba(54, 162, 235, 1)"
-    )
+    );
 
     chartInstances.shift.current = createChart(
       chartRefs.shift,
       "pie",
       stats.shiftStats.map((item) => item._id || "Unknown"),
       stats.shiftStats.map((item) => item.count),
-      ["rgba(255, 99, 132, 0.7)", "rgba(54, 162, 235, 0.7)", "rgba(255, 206, 86, 0.7)", "rgba(75, 192, 192, 0.7)"],
-      undefined
-    )
+      [
+        "rgba(255, 99, 132, 0.7)",
+        "rgba(54, 162, 235, 0.7)",
+        "rgba(255, 206, 86, 0.7)",
+        "rgba(75, 192, 192, 0.7)",
+      ]
+    );
 
-    const topBatches = stats.batchStats.slice(0, 10)
+    const topBatches = stats.batchStats.slice(0, 10);
     chartInstances.batch.current = createChart(
       chartRefs.batch,
       "bar",
@@ -92,9 +120,9 @@ export default function StatisticsCharts({ stats }) {
       topBatches.map((item) => item.count),
       "rgba(75, 192, 192, 0.7)",
       "rgba(75, 192, 192, 1)"
-    )
+    );
 
-    const topMaterials = stats.materialStats.slice(0, 10)
+    const topMaterials = stats.materialStats.slice(0, 10);
     chartInstances.material.current = createChart(
       chartRefs.material,
       "bar",
@@ -102,25 +130,25 @@ export default function StatisticsCharts({ stats }) {
       topMaterials.map((item) => item.count),
       "rgba(153, 102, 255, 0.7)",
       "rgba(153, 102, 255, 1)"
-    )
+    );
 
     return () => {
       // Clean up chart instances on unmount
       Object.values(chartInstances).forEach((instanceRef) => {
         if (instanceRef.current) {
-          instanceRef.current.destroy()
-          instanceRef.current = null
+          instanceRef.current.destroy();
+          instanceRef.current = null;
         }
-      })
-    }
-  }, [stats])
+      });
+    };
+  }, [stats]);
 
   if (!stats) {
     return (
       <div className="flex justify-center items-center h-64">
         <p className="text-muted-foreground">No statistics available</p>
       </div>
-    )
+    );
   }
 
   return (
@@ -169,5 +197,5 @@ export default function StatisticsCharts({ stats }) {
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }

@@ -3,42 +3,67 @@
 import { useState, useEffect } from "react"
 import { format } from "date-fns"
 import { Button } from "@/components/ui/button"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { API_URL } from "@/app/config"
 
-export default function LineItemsTable({ scannerId, dateRange, apiUrl = API_URL }) {
-  const [data, setData] = useState([])
+// Define types for props
+interface DateRange {
+  from: Date;
+  to: Date;
+}
+
+interface LineItemsTableProps {
+  scannerId: string;
+  dateRange: DateRange;
+  apiUrl?: string;
+}
+
+export default function LineItemsTable({
+  scannerId,
+  dateRange,
+  apiUrl = API_URL,
+}: LineItemsTableProps) {
+  const [data, setData] = useState<any[]>([]);
   const [pagination, setPagination] = useState({
     total: 0,
     skip: 0,
     limit: 50,
     hasMore: false,
-  })
-  const [isLoading, setIsLoading] = useState(false)
+  });
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    fetchData(0)
-  }, [scannerId, dateRange])
+    fetchData(0);
+  }, [scannerId, dateRange]);
 
   const fetchData = async (skip = 0) => {
-    setIsLoading(true)
+    setIsLoading(true);
     try {
-      let url = `${apiUrl}/api/line-items?skip=${skip}&limit=${pagination.limit}`
+      let url = `${apiUrl}/api/line-items?skip=${skip}&limit=${pagination.limit}`;
 
-      if (scannerId) url += `&scannerId=${encodeURIComponent(scannerId)}`
-      if (dateRange.from) url += `&startDate=${encodeURIComponent(dateRange.from.toISOString())}`
-      if (dateRange.to) url += `&endDate=${encodeURIComponent(dateRange.to.toISOString())}`
+      if (scannerId) url += `&scannerId=${encodeURIComponent(scannerId)}`;
+      if (dateRange.from)
+        url += `&startDate=${encodeURIComponent(dateRange.from.toISOString())}`;
+      if (dateRange.to)
+        url += `&endDate=${encodeURIComponent(dateRange.to.toISOString())}`;
 
-      const response = await fetch(url)
-      if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`)
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
 
-      const result = await response.json()
+      const result = await response.json();
 
       if (skip === 0) {
-        setData(result.data)
+        setData(result.data);
       } else {
-        setData((prev) => [...prev, ...result.data])
+        setData((prev) => [...prev, ...result.data]);
       }
 
       setPagination({
@@ -46,26 +71,26 @@ export default function LineItemsTable({ scannerId, dateRange, apiUrl = API_URL 
         skip: result.pagination.skip + result.data.length,
         limit: result.pagination.limit,
         hasMore: result.pagination.hasMore,
-      })
+      });
     } catch (error) {
-      console.error("Error fetching line items:", error)
+      console.error("Error fetching line items:", error);
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   const loadMore = () => {
     if (!isLoading && pagination.hasMore) {
-      fetchData(pagination.skip)
+      fetchData(pagination.skip);
     }
-  }
+  };
 
-  const parseRawData = (rawData) => {
-    if (!rawData) return { isValid: false, parts: [] }
+  const parseRawData = (rawData: string) => {
+    if (!rawData) return { isValid: false, parts: [] };
 
-    const parts = rawData.split(",")
+    const parts = rawData.split(",");
     if (parts.length !== 5) {
-      return { isValid: false, parts }
+      return { isValid: false, parts };
     }
 
     return {
@@ -75,8 +100,8 @@ export default function LineItemsTable({ scannerId, dateRange, apiUrl = API_URL 
       batchCode: parts[2],
       materialCode: parts[3],
       cartonSerial: parts[4],
-    }
-  }
+    };
+  };
 
   return (
     <div className="space-y-4">
@@ -105,12 +130,17 @@ export default function LineItemsTable({ scannerId, dateRange, apiUrl = API_URL 
               </TableRow>
             ) : data.length > 0 ? (
               data.map((item, index) => {
-                const parsedData = item.parsedData || parseRawData(item.rawData)
-                const isValid = item.isValid
+                const parsedData = item.parsedData || parseRawData(item.rawData);
+                const isValid = item.isValid;
 
                 return (
-                  <TableRow key={item._id || index} className={isValid ? "bg-green-500" : "bg-red-500"}>
-                    <TableCell>{format(new Date(item.timestamp), "MMM dd, yyyy HH:mm:ss")}</TableCell>
+                  <TableRow
+                    key={item._id || index}
+                    className={isValid ? "bg-green-500" : "bg-red-500"}
+                  >
+                    <TableCell>
+                      {format(new Date(item.timestamp), "MMM dd, yyyy HH:mm:ss")}
+                    </TableCell>
                     {isValid ? (
                       <>
                         <TableCell>{parsedData.lineNumber || "-"}</TableCell>
@@ -119,24 +149,34 @@ export default function LineItemsTable({ scannerId, dateRange, apiUrl = API_URL 
                         <TableCell>{parsedData.materialCode || "-"}</TableCell>
                         <TableCell>{parsedData.cartonSerial || "-"}</TableCell>
                         <TableCell>
-                          <Badge variant="outline" className="bg-green-100 text-green-800 hover:bg-green-100">
+                          <Badge
+                            variant="outline"
+                            className="bg-green-100 text-green-800 hover:bg-green-100"
+                          >
                             Valid
                           </Badge>
                         </TableCell>
                       </>
                     ) : (
                       <>
-                        <TableCell colSpan={5}>{item.errorMessage || "Invalid data format"}</TableCell>
+                        <TableCell colSpan={5}>
+                          {item.errorMessage || "Invalid data format"}
+                        </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className="bg-red-100 text-red-800 hover:bg-red-100">
+                          <Badge
+                            variant="outline"
+                            className="bg-red-100 text-red-800 hover:bg-red-100"
+                          >
                             Invalid
                           </Badge>
                         </TableCell>
                       </>
                     )}
-                    <TableCell className="font-mono text-xs">{item.rawData || ""}</TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {item.rawData || ""}
+                    </TableCell>
                   </TableRow>
-                )
+                );
               })
             ) : (
               <TableRow>
@@ -150,7 +190,11 @@ export default function LineItemsTable({ scannerId, dateRange, apiUrl = API_URL 
       </div>
 
       <div className="flex justify-between items-center">
-        <Button onClick={loadMore} disabled={isLoading || !pagination.hasMore} variant="outline">
+        <Button
+          onClick={loadMore}
+          disabled={isLoading || !pagination.hasMore}
+          variant="outline"
+        >
           {isLoading ? (
             <>
               <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-primary mr-2"></div>
@@ -165,6 +209,6 @@ export default function LineItemsTable({ scannerId, dateRange, apiUrl = API_URL 
         </div>
       </div>
     </div>
-  )
+  );
 }
 

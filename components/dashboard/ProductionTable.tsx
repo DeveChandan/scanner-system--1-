@@ -1,27 +1,45 @@
-"use client"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { formatNumber } from "@/lib/utils";
+import { format } from "date-fns";
+import React from "react";
 
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { formatNumber } from "@/lib/utils"
-import { format } from "date-fns"
+// Define the types for the props
+interface DayData {
+  date: string;
+  validCount: number;
+  invalidCount: number;
+}
 
-export default function ProductionTable({ data }) {
-  if (!data) return null
+interface ProductionTableProps {
+  data: Record<string, DayData[]>;
+}
 
-  const scannerIds = Object.keys(data)
-  const allDates = new Set()
+interface TableRowData {
+  date: string;
+  scannerId: string;
+  validCount: number;
+  invalidCount: number;
+  total: number;
+}
+
+export default function ProductionTable({ data }: ProductionTableProps) {
+  if (!data) return null;
+
+  const scannerIds = Object.keys(data);
+  const allDates = new Set<string>(); // Explicitly type the Set
 
   // Collect all unique dates
   scannerIds.forEach((scannerId) => {
-    data[scannerId].forEach((day) => allDates.add(day.date))
-  })
+    data[scannerId].forEach((day) => allDates.add(day.date));
+  });
 
-  const sortedDates = Array.from(allDates).sort((a, b) => new Date(b) - new Date(a))
+  const sortedDates = Array.from(allDates).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
 
   // Create table rows
-  const tableRows = []
+  const tableRows: TableRowData[] = []; // Explicitly type the array
   sortedDates.forEach((date) => {
     scannerIds.forEach((scannerId) => {
-      const dayData = data[scannerId].find((day) => day.date === date)
+      const dayData = data[scannerId].find((day) => day.date === date);
       if (dayData) {
         tableRows.push({
           date,
@@ -29,10 +47,10 @@ export default function ProductionTable({ data }) {
           validCount: dayData.validCount,
           invalidCount: dayData.invalidCount,
           total: dayData.validCount + dayData.invalidCount,
-        })
+        });
       }
-    })
-  })
+    });
+  });
 
   return (
     <div className="rounded-md border">
@@ -67,6 +85,5 @@ export default function ProductionTable({ data }) {
         </TableBody>
       </Table>
     </div>
-  )
+  );
 }
-

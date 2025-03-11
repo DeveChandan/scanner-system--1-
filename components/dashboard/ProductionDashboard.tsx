@@ -1,12 +1,12 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { format } from "date-fns"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { format } from "date-fns"
 import { CalendarIcon, RefreshCw } from "lucide-react"
 import ProductionOverview from "./ProductionOverview"
 import ProductionChart from "./ProductionChart"
@@ -14,16 +14,28 @@ import ProductionTable from "./ProductionTable"
 import ScannerDetails from "./ScannerDetails"
 import { API_URL } from "@/app/config"
 
+// Define a type where both properties are required.
+type DateRangeRequired = {
+  from: Date
+  to: Date
+}
+
+// Define a type where properties can be undefined.
+type DateRange = {
+  from?: Date
+  to?: Date
+}
+
 export default function ProductionDashboard() {
-  // All hooks are declared unconditionally.
   const [isLoading, setIsLoading] = useState(true)
-  const [productionData, setProductionData] = useState(null)
-  const [productionTotals, setProductionTotals] = useState(null)
+  const [productionData, setProductionData] = useState<any>(null)
+  const [productionTotals, setProductionTotals] = useState<any>(null)
   const [dateRange, setDateRange] = useState(7)
   const [lastRefresh, setLastRefresh] = useState(new Date())
-  const [selectedScanner, setSelectedScanner] = useState(null)
+  const [selectedScanner, setSelectedScanner] = useState<string | null>(null)
   const [showScannerDetails, setShowScannerDetails] = useState(false)
-  const [date, setDate] = useState({
+  // Initialize date state with required from and to properties.
+  const [date, setDate] = useState<DateRangeRequired>({
     from: new Date(new Date().setDate(new Date().getDate() - 7)),
     to: new Date(),
   })
@@ -61,8 +73,8 @@ export default function ProductionDashboard() {
 
   const fetchProductionData = async () => {
     try {
-      const startDate = date.from || new Date(new Date().setDate(new Date().getDate() - dateRange))
-      const endDate = date.to || new Date()
+      const startDate = date.from
+      const endDate = date.to
 
       const response = await fetch(
         `${API_URL}/api/production-data?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`
@@ -75,7 +87,8 @@ export default function ProductionDashboard() {
     }
   }
 
-  const handleScannerSelect = (scannerId) => {
+  // Explicitly type scannerId as string.
+  const handleScannerSelect = (scannerId: string) => {
     setSelectedScanner(scannerId)
     setShowScannerDetails(true)
   }
@@ -84,13 +97,23 @@ export default function ProductionDashboard() {
     setShowScannerDetails(false)
   }
 
-  const handleDateRangeChange = (range) => {
+  const handleDateRangeChange = (range: number) => {
     setDateRange(range)
     // Reset custom date range when using preset ranges.
     setDate({
       from: new Date(new Date().setDate(new Date().getDate() - range)),
       to: new Date(),
     })
+  }
+
+  // onSelect handler for Calendar: ensure that the provided value matches DateRangeRequired.
+  const handleDateSelect = (value: DateRange | undefined) => {
+    if (value && value.from && value.to) {
+      setDate({
+        from: value.from,
+        to: value.to,
+      })
+    }
   }
 
   return (
@@ -139,7 +162,7 @@ export default function ProductionDashboard() {
                   mode="range"
                   defaultMonth={date.from}
                   selected={date}
-                  onSelect={setDate}
+                  onSelect={handleDateSelect}
                   numberOfMonths={2}
                 />
               </PopoverContent>

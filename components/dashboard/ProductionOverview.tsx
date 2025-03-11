@@ -1,16 +1,26 @@
-"use client"
+import { Card, CardContent } from "@/components/ui/card";
+import { formatNumber } from "@/lib/utils";
+import React from "react";
 
-import { Card, CardContent } from "@/components/ui/card"
-import { formatNumber } from "@/lib/utils"
+// Define the types for the props
+interface Totals {
+  totalValid: number;
+  totalInvalid: number;
+}
 
-export default function ProductionOverview({ data, onScannerSelect }) {
-  if (!data) return null
+interface ProductionOverviewProps {
+  data: Record<string, Totals>;
+  onScannerSelect: (scannerId: string) => void;
+}
+
+export default function ProductionOverview({ data, onScannerSelect }: ProductionOverviewProps) {
+  if (!data) return null;
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
       {Object.entries(data).map(([scannerId, totals]) => {
-        const total = totals.totalValid + totals.totalInvalid
-        const validPercentage = total > 0 ? ((totals.totalValid / total) * 100).toFixed(2) : 0
+        const total = totals.totalValid + totals.totalInvalid;
+        const validPercentage = total > 0 ? ((totals.totalValid / total) * 100).toFixed(2) : 0;
 
         return (
           <Card
@@ -38,9 +48,8 @@ export default function ProductionOverview({ data, onScannerSelect }) {
               </div>
             </CardContent>
           </Card>
-        )
+        );
       })}
     </div>
-  )
+  );
 }
-

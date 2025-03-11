@@ -1,7 +1,7 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { format } from "date-fns"
+import { useState, useEffect } from "react";
+import { format } from "date-fns";
 import {
   Dialog,
   DialogContent,
@@ -9,52 +9,75 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from "@/components/ui/dialog"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Button } from "@/components/ui/button"
-import { Calendar } from "@/components/ui/calendar"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { CalendarIcon } from "lucide-react"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { formatNumber } from "@/lib/utils"
-import LineItemsTable from "./LineItemsTable"
-import StatisticsCharts from "./StatisticsCharts"
+} from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { CalendarIcon } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { formatNumber } from "@/lib/utils";
+import LineItemsTable from "./LineItemsTable";
+import StatisticsCharts from "./StatisticsCharts";
 
-export default function ScannerDetails({ scannerId, productionData, onClose, dateRange, apiUrl }) {
-  const [activeTab, setActiveTab] = useState("summary")
-  const [date, setDate] = useState(
+// Define TypeScript types for props
+interface DateRange {
+  from: Date;
+  to: Date;
+}
+
+interface ProductionData {
+  date: string;
+  validCount: number;
+  invalidCount: number;
+}
+
+interface ScannerDetailsProps {
+  scannerId: string;
+  productionData: ProductionData[];
+  onClose: () => void;
+  dateRange?: DateRange;
+  apiUrl: string;
+}
+
+export default function ScannerDetails({
+  scannerId,
+  productionData,
+  onClose,
+  dateRange,
+  apiUrl,
+}: ScannerDetailsProps) {
+  const [activeTab, setActiveTab] = useState<"summary" | "lineItems" | "stats">("summary");
+  const [date, setDate] = useState<DateRange>(
     dateRange || {
       from: new Date(new Date().setDate(new Date().getDate() - 7)),
       to: new Date(),
-    },
-  )
-  const [stats, setStats] = useState(null)
-  const [isLoading, setIsLoading] = useState(false)
+    }
+  );
+  const [stats, setStats] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     if (activeTab === "stats") {
-      fetchStatistics()
+      fetchStatistics();
     }
-  }, [activeTab, scannerId, date])
+  }, [activeTab, scannerId, date]);
 
   const fetchStatistics = async () => {
-    setIsLoading(true)
+    setIsLoading(true);
     try {
-      const startDate = date.from
-      const endDate = date.to
-
       const response = await fetch(
-        `${apiUrl}/api/line-item-stats?scannerId=${scannerId}&startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`,
-      )
-      if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`)
-      const data = await response.json()
-      setStats(data[scannerId])
+        `${apiUrl}/api/line-item-stats?scannerId=${scannerId}&startDate=${date.from.toISOString()}&endDate=${date.to.toISOString()}`
+      );
+      if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+      const data = await response.json();
+      setStats(data[scannerId] || {});
     } catch (error) {
-      console.error("Error fetching statistics:", error)
+      console.error("Error fetching statistics:", error);
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   return (
     <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
@@ -64,13 +87,14 @@ export default function ScannerDetails({ scannerId, productionData, onClose, dat
           <DialogDescription>View detailed information for this scanner</DialogDescription>
         </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 overflow-hidden flex flex-col">
+        <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as any)} className="flex-1 overflow-hidden flex flex-col">
           <TabsList>
             <TabsTrigger value="summary">Summary</TabsTrigger>
             <TabsTrigger value="lineItems">Line Items</TabsTrigger>
             <TabsTrigger value="stats">Statistics</TabsTrigger>
           </TabsList>
 
+          {/* Summary Tab */}
           <TabsContent value="summary" className="flex-1 overflow-auto">
             <div className="rounded-md border">
               <Table>
@@ -84,12 +108,12 @@ export default function ScannerDetails({ scannerId, productionData, onClose, dat
                 </TableHeader>
                 <TableBody>
                   {productionData.length > 0 ? (
-                    productionData.map((day) => (
-                      <TableRow key={day.date}>
-                        <TableCell>{format(new Date(day.date), "MMM dd, yyyy")}</TableCell>
-                        <TableCell className="text-right">{formatNumber(day.validCount)}</TableCell>
-                        <TableCell className="text-right">{formatNumber(day.invalidCount)}</TableCell>
-                        <TableCell className="text-right">{formatNumber(day.validCount + day.invalidCount)}</TableCell>
+                    productionData.map(({ date, validCount, invalidCount }) => (
+                      <TableRow key={date}>
+                        <TableCell>{format(new Date(date), "MMM dd, yyyy")}</TableCell>
+                        <TableCell className="text-right">{formatNumber(validCount)}</TableCell>
+                        <TableCell className="text-right">{formatNumber(invalidCount)}</TableCell>
+                        <TableCell className="text-right">{formatNumber(validCount + invalidCount)}</TableCell>
                       </TableRow>
                     ))
                   ) : (
@@ -104,6 +128,7 @@ export default function ScannerDetails({ scannerId, productionData, onClose, dat
             </div>
           </TabsContent>
 
+          {/* Line Items Tab */}
           <TabsContent value="lineItems" className="flex-1 overflow-hidden flex flex-col">
             <div className="mb-4 flex items-center gap-2">
               <Popover>
@@ -129,7 +154,7 @@ export default function ScannerDetails({ scannerId, productionData, onClose, dat
                     mode="range"
                     defaultMonth={date.from}
                     selected={date}
-                    onSelect={setDate}
+                    onSelect={(selected) => setDate(selected as DateRange)}
                     numberOfMonths={2}
                   />
                 </PopoverContent>
@@ -141,6 +166,7 @@ export default function ScannerDetails({ scannerId, productionData, onClose, dat
             </div>
           </TabsContent>
 
+          {/* Statistics Tab */}
           <TabsContent value="stats" className="flex-1 overflow-auto">
             {isLoading ? (
               <div className="flex justify-center items-center h-64">
@@ -157,6 +183,5 @@ export default function ScannerDetails({ scannerId, productionData, onClose, dat
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  )
+  );
 }
-
