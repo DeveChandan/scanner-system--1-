@@ -121,7 +121,7 @@ function createScannerClient(scanner) {
         "IP address not configured",
         reconnectAttempts,
       )
-      setTimeout(connectToScanner, 60000) // Try again in a minute
+      setTimeout(connectToScanner, 600) // Try again in a minute
       return
     }
 
@@ -180,9 +180,9 @@ function createScannerClient(scanner) {
       )
     }
 
-    // Exponential backoff for reconnection attempts (max 5 minutes)
-    const delay = Math.min(5000 * Math.pow(1.5, reconnectAttempts - 1), 300000)
-    console.log(`Will attempt to reconnect ${scanner.id} in ${delay / 1000} seconds (attempt ${reconnectAttempts})`)
+    // Exponential backoff for reconnection attempts ()
+    const delay = Math.min(500 * Math.pow(1.5, reconnectAttempts - 1), 1000)
+    console.log(`Will attempt to reconnect ${scanner.id} in ${delay / 500} seconds (attempt ${reconnectAttempts})`)
 
     setTimeout(connectToScanner, delay)
   })

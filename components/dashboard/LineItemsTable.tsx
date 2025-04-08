@@ -3,67 +3,44 @@
 import { useState, useEffect } from "react"
 import { format } from "date-fns"
 import { Button } from "@/components/ui/button"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
+import { FileSpreadsheet } from "lucide-react"
 import { API_URL } from "@/app/config"
 
-// Define types for props
-interface DateRange {
-  from: Date;
-  to: Date;
-}
-
-interface LineItemsTableProps {
-  scannerId: string;
-  dateRange: DateRange;
-  apiUrl?: string;
-}
-
-export default function LineItemsTable({
-  scannerId,
-  dateRange,
-  apiUrl = API_URL,
-}: LineItemsTableProps) {
-  const [data, setData] = useState<any[]>([]);
+export default function LineItemsTable({ scannerId, dateRange, apiUrl = API_URL }) {
+  const [data, setData] = useState([])
   const [pagination, setPagination] = useState({
     total: 0,
     skip: 0,
     limit: 50,
     hasMore: false,
-  });
-  const [isLoading, setIsLoading] = useState(false);
+  })
+  const [isLoading, setIsLoading] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
 
   useEffect(() => {
-    fetchData(0);
-  }, [scannerId, dateRange]);
+    fetchData(0)
+  }, [scannerId, dateRange])
 
   const fetchData = async (skip = 0) => {
-    setIsLoading(true);
+    setIsLoading(true)
     try {
-      let url = `${apiUrl}/api/line-items?skip=${skip}&limit=${pagination.limit}`;
+      let url = `${apiUrl}/api/line-items?skip=${skip}&limit=${pagination.limit}`
 
-      if (scannerId) url += `&scannerId=${encodeURIComponent(scannerId)}`;
-      if (dateRange.from)
-        url += `&startDate=${encodeURIComponent(dateRange.from.toISOString())}`;
-      if (dateRange.to)
-        url += `&endDate=${encodeURIComponent(dateRange.to.toISOString())}`;
+      if (scannerId) url += `&scannerId=${encodeURIComponent(scannerId)}`
+      if (dateRange.from) url += `&startDate=${encodeURIComponent(dateRange.from.toISOString())}`
+      if (dateRange.to) url += `&endDate=${encodeURIComponent(dateRange.to.toISOString())}`
 
-      const response = await fetch(url);
-      if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+      const response = await fetch(url)
+      if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`)
 
-      const result = await response.json();
+      const result = await response.json()
 
       if (skip === 0) {
-        setData(result.data);
+        setData(result.data)
       } else {
-        setData((prev) => [...prev, ...result.data]);
+        setData((prev) => [...prev, ...result.data])
       }
 
       setPagination({
@@ -71,26 +48,55 @@ export default function LineItemsTable({
         skip: result.pagination.skip + result.data.length,
         limit: result.pagination.limit,
         hasMore: result.pagination.hasMore,
-      });
+      })
     } catch (error) {
-      console.error("Error fetching line items:", error);
+      console.error("Error fetching line items:", error)
     } finally {
-      setIsLoading(false);
+      setIsLoading(false)
     }
-  };
+  }
 
   const loadMore = () => {
     if (!isLoading && pagination.hasMore) {
-      fetchData(pagination.skip);
+      fetchData(pagination.skip)
     }
-  };
+  }
 
-  const parseRawData = (rawData: string) => {
-    if (!rawData) return { isValid: false, parts: [] };
+  const handleExport = async () => {
+    try {
+      setIsExporting(true)
 
-    const parts = rawData.split(",");
+      // Make sure we're using the correct API endpoint
+      let url = `${apiUrl}/api/export-excel?`
+
+      if (scannerId) url += `scannerId=${encodeURIComponent(scannerId)}&`
+      if (dateRange.from) url += `startDate=${encodeURIComponent(dateRange.from.toISOString())}&`
+      if (dateRange.to) url += `endDate=${encodeURIComponent(dateRange.to.toISOString())}&`
+
+      console.log("Export URL:", url) // Add this for debugging
+
+      // Create a hidden anchor element to trigger the download
+      const link = document.createElement("a")
+      link.href = url
+      link.target = "_blank"
+      link.download = `scanner-data-${scannerId || "all"}-${new Date().toISOString().split("T")[0]}.xlsx`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    } catch (error) {
+      console.error("Error exporting data:", error)
+      alert("Error exporting data. Please try again.")
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  const parseRawData = (rawData) => {
+    if (!rawData) return { isValid: false, parts: [] }
+
+    const parts = rawData.split(",")
     if (parts.length !== 5) {
-      return { isValid: false, parts };
+      return { isValid: false, parts }
     }
 
     return {
@@ -100,11 +106,30 @@ export default function LineItemsTable({
       batchCode: parts[2],
       materialCode: parts[3],
       cartonSerial: parts[4],
-    };
-  };
+    }
+  }
 
   return (
     <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <div className="text-sm text-muted-foreground">
+          {pagination.total > 0 ? `Showing ${data.length} of ${pagination.total} records` : "No records found"}
+        </div>
+        <Button onClick={handleExport} disabled={isExporting || data.length === 0} size="sm" variant="outline">
+          {isExporting ? (
+            <>
+              <div className="mr-2 h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+              Exporting...
+            </>
+          ) : (
+            <>
+              <FileSpreadsheet className="mr-2 h-4 w-4" />
+              Export to Excel
+            </>
+          )}
+        </Button>
+      </div>
+
       <div className="rounded-md border">
         <Table>
           <TableHeader>
@@ -130,17 +155,12 @@ export default function LineItemsTable({
               </TableRow>
             ) : data.length > 0 ? (
               data.map((item, index) => {
-                const parsedData = item.parsedData || parseRawData(item.rawData);
-                const isValid = item.isValid;
+                const parsedData = item.parsedData || parseRawData(item.rawData)
+                const isValid = item.isValid
 
                 return (
-                  <TableRow
-                    key={item._id || index}
-                    className={isValid ? "bg-green-500" : "bg-red-500"}
-                  >
-                    <TableCell>
-                      {format(new Date(item.timestamp), "MMM dd, yyyy HH:mm:ss")}
-                    </TableCell>
+                  <TableRow key={item._id || index} className={isValid ? "bg-green-50" : "bg-red-50"}>
+                    <TableCell>{format(new Date(item.timestamp), "MMM dd, yyyy HH:mm:ss")}</TableCell>
                     {isValid ? (
                       <>
                         <TableCell>{parsedData.lineNumber || "-"}</TableCell>
@@ -149,34 +169,24 @@ export default function LineItemsTable({
                         <TableCell>{parsedData.materialCode || "-"}</TableCell>
                         <TableCell>{parsedData.cartonSerial || "-"}</TableCell>
                         <TableCell>
-                          <Badge
-                            variant="outline"
-                            className="bg-green-100 text-green-800 hover:bg-green-100"
-                          >
+                          <Badge variant="outline" className="bg-green-100 text-green-800 hover:bg-green-100">
                             Valid
                           </Badge>
                         </TableCell>
                       </>
                     ) : (
                       <>
-                        <TableCell colSpan={5}>
-                          {item.errorMessage || "Invalid data format"}
-                        </TableCell>
+                        <TableCell colSpan={5}>{item.errorMessage || "Invalid data format"}</TableCell>
                         <TableCell>
-                          <Badge
-                            variant="outline"
-                            className="bg-red-100 text-red-800 hover:bg-red-100"
-                          >
+                          <Badge variant="outline" className="bg-red-100 text-red-800 hover:bg-red-100">
                             Invalid
                           </Badge>
                         </TableCell>
                       </>
                     )}
-                    <TableCell className="font-mono text-xs">
-                      {item.rawData || ""}
-                    </TableCell>
+                    <TableCell className="font-mono text-xs">{item.rawData || ""}</TableCell>
                   </TableRow>
-                );
+                )
               })
             ) : (
               <TableRow>
@@ -190,11 +200,7 @@ export default function LineItemsTable({
       </div>
 
       <div className="flex justify-between items-center">
-        <Button
-          onClick={loadMore}
-          disabled={isLoading || !pagination.hasMore}
-          variant="outline"
-        >
+        <Button onClick={loadMore} disabled={isLoading || !pagination.hasMore} variant="outline">
           {isLoading ? (
             <>
               <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-primary mr-2"></div>
@@ -209,6 +215,6 @@ export default function LineItemsTable({
         </div>
       </div>
     </div>
-  );
+  )
 }
 

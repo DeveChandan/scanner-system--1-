@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Activity, BarChart3, Database, Settings } from "lucide-react"
+import { Activity, BarChart3, Database, Download, Settings } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const navItems = [
@@ -15,6 +15,16 @@ const navItems = [
     name: "Production Dashboard",
     href: "/dashboard/production",
     icon: BarChart3,
+  },
+  {
+    name: "Data Export",
+    href: "/dashboard/export",
+    icon: Download,
+  },
+  {
+    name: "SAP Integration",
+    href: "/dashboard/sap-integration",
+    icon: Database,
   },
   {
     name: "Data Explorer",
@@ -56,9 +66,8 @@ export function Sidebar() {
       </nav>
       <div className="p-4 border-t">
         <div className="text-xs text-muted-foreground">
-          <p>Scanner System v1.0.0</p>
+          <p>Scanner System v1.0.1</p>
           <p>© 2025 All rights reserved</p>
-          <p>Powered By Vertif it solutions </p>
         </div>
       </div>
     </div>
