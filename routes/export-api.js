@@ -11,6 +11,15 @@ const {
   Scanner7Model,
 } = require("../models/scanner")
 
+// Helper function to get scanner type based on ID
+function getScannerType(scannerId) {
+  const id = Number.parseInt(scannerId.replace("scanner", ""), 10)
+  if (id >= 1 && id <= 3) return "pouch"
+  if (id >= 4 && id <= 6) return "tin"
+  if (id === 7) return "dispatch"
+  return "unknown"
+}
+
 // Map scanner IDs to their models
 const scannerModels = {
   scanner1: Scanner1Model,
@@ -22,8 +31,23 @@ const scannerModels = {
   scanner7: Scanner7Model,
 }
 
-// Add a simple test endpoint to verify the export-api routes are working
+// Utility: Convert a UTC timestamp to IST string
+function convertToIST(utcTimestamp) {
+  return new Date(utcTimestamp).toLocaleString("en-US", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  })
+}
+
+// Simple test endpoint to verify the export API routes are working
 router.get("/export-test", (req, res) => {
+  console.log("Export test endpoint accessed")
   res.json({
     success: true,
     message: "Export API is working correctly",
@@ -31,11 +55,25 @@ router.get("/export-test", (req, res) => {
   })
 })
 
-// Export scanner data to Excel with advanced filtering
+// Debug endpoint to check if the export-excel route is registered
+router.get("/export-debug", (req, res) => {
+  console.log("Export debug endpoint accessed")
+  res.json({
+    success: true,
+    message: "Export debug endpoint is working",
+    query: req.query,
+    timestamp: new Date(),
+  })
+})
+
+// Main Excel export endpoint for scanner data
 router.get("/export-excel", async (req, res) => {
+  console.log("Export Excel endpoint accessed with query:", req.query)
+
   try {
     const {
       scannerId,
+      scannerType,
       startDate,
       endDate,
       startTime,
@@ -48,18 +86,15 @@ router.get("/export-excel", async (req, res) => {
       materialCode,
     } = req.query
 
-    // Validate scanner ID
+    // Validate scanner ID if provided
     if (scannerId && !scannerModels[scannerId]) {
       return res.status(400).json({ error: `Invalid scanner ID: ${scannerId}` })
     }
 
-    // Build query with optional filters
+    // Build MongoDB query with optional filters
     const query = {}
-
-    // Date and time filtering
     if (startDate || endDate || startTime || endTime) {
       query.timestamp = {}
-
       if (startDate) {
         const start = new Date(startDate)
         if (startTime) {
@@ -70,7 +105,6 @@ router.get("/export-excel", async (req, res) => {
         }
         query.timestamp.$gte = start
       }
-
       if (endDate) {
         const end = new Date(endDate)
         if (endTime) {
@@ -83,33 +117,19 @@ router.get("/export-excel", async (req, res) => {
       }
     }
 
-    // Add quantity filtering if provided
+    // Additional filters
+    if (scannerType) query.scannerType = scannerType
     if (minQuantity !== undefined || maxQuantity !== undefined) {
       query["parsedData.counter"] = {}
-      if (minQuantity !== undefined) {
-        query["parsedData.counter"].$gte = Number(minQuantity)
-      }
-      if (maxQuantity !== undefined) {
-        query["parsedData.counter"].$lte = Number(maxQuantity)
-      }
+      if (minQuantity !== undefined) query["parsedData.counter"].$gte = Number(minQuantity)
+      if (maxQuantity !== undefined) query["parsedData.counter"].$lte = Number(maxQuantity)
     }
+    if (lineNumber) query["parsedData.lineNumber"] = lineNumber
+    if (shift) query["parsedData.shift"] = shift
+    if (batchCode) query["parsedData.batchCode"] = batchCode
+    if (materialCode) query["parsedData.materialCode"] = materialCode
 
-    // Add other filters if provided
-    if (lineNumber) {
-      query["parsedData.lineNumber"] = lineNumber
-    }
-
-    if (shift) {
-      query["parsedData.shift"] = shift
-    }
-
-    if (batchCode) {
-      query["parsedData.batchCode"] = batchCode
-    }
-
-    if (materialCode) {
-      query["parsedData.materialCode"] = materialCode
-    }
+    console.log("MongoDB query:", JSON.stringify(query, null, 2))
 
     // Create a new Excel workbook
     const workbook = new ExcelJS.Workbook()
@@ -118,29 +138,40 @@ router.get("/export-excel", async (req, res) => {
     workbook.created = new Date()
     workbook.modified = new Date()
 
-    // Determine which scanners to include
-    const scannersToProcess = scannerId
-      ? [{ id: scannerId, model: scannerModels[scannerId] }]
-      : Object.entries(scannerModels).map(([id, model]) => ({ id, model }))
+    // Determine scanners to process
+    let scannersToProcess = []
+    if (scannerId) {
+      scannersToProcess = [{ id: scannerId, model: scannerModels[scannerId] }]
+    } else if (scannerType) {
+      const scannerIds = Object.keys(scannerModels)
+      switch (scannerType) {
+        case "pouch":
+          scannersToProcess = scannerIds.slice(0, 3).map((id) => ({ id, model: scannerModels[id] }))
+          break
+        case "tin":
+          scannersToProcess = scannerIds.slice(3, 6).map((id) => ({ id, model: scannerModels[id] }))
+          break
+        case "dispatch":
+          scannersToProcess = [{ id: "scanner7", model: scannerModels["scanner7"] }]
+          break
+        default:
+          scannersToProcess = Object.entries(scannerModels).map(([id, model]) => ({ id, model }))
+      }
+    } else {
+      scannersToProcess = Object.entries(scannerModels).map(([id, model]) => ({ id, model }))
+    }
 
-    // Add a filter summary worksheet
+    // Create Filter Summary worksheet
     const filterSheet = workbook.addWorksheet("Filter Criteria")
     filterSheet.columns = [
       { header: "Filter", key: "filter", width: 20 },
       { header: "Value", key: "value", width: 30 },
     ]
-
-    // Style the header row
     filterSheet.getRow(1).font = { bold: true }
-    filterSheet.getRow(1).fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: "FFE0E0E0" },
-    }
-
-    // Add filter criteria
+    filterSheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0E0E0" } }
     const filters = [
       { filter: "Scanner", value: scannerId || "All Scanners" },
+      { filter: "Scanner Type", value: scannerType || "All Types" },
       { filter: "Start Date", value: startDate ? new Date(startDate).toLocaleDateString() : "Not specified" },
       { filter: "End Date", value: endDate ? new Date(endDate).toLocaleDateString() : "Not specified" },
       { filter: "Start Time", value: startTime || "Not specified" },
@@ -153,116 +184,161 @@ router.get("/export-excel", async (req, res) => {
       { filter: "Material Code", value: materialCode || "Not specified" },
       { filter: "Export Date", value: new Date().toLocaleString() },
     ]
+    filters.forEach((item) => filterSheet.addRow(item))
 
-    filters.forEach((item) => {
-      filterSheet.addRow(item)
-    })
+    // Create a Summary worksheet (for overall scanner summary)
+    const summarySheet = workbook.addWorksheet("Summary")
+    summarySheet.columns = [
+      { header: "Scanner ID", key: "scannerId", width: 15 },
+      { header: "Scanner Type", key: "scannerType", width: 15 },
+      { header: "Total Records", key: "total", width: 15 },
+      { header: "Valid Records", key: "valid", width: 15 },
+      { header: "Invalid Records", key: "invalid", width: 15 },
+      { header: "First Record", key: "firstRecord", width: 20 },
+      { header: "Last Record", key: "lastRecord", width: 20 },
+    ]
+    summarySheet.getRow(1).font = { bold: true }
+    summarySheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0E0E0" } }
 
-    // Process each scanner
     let totalRecords = 0
 
-    for (const { id, model } of scannersToProcess) {
-      // Create a worksheet for this scanner
-      const worksheet = workbook.addWorksheet(id)
+    // Process each scanner in parallel for performance
+    await Promise.all(
+      scannersToProcess.map(async ({ id, model }) => {
+        // Create worksheet for this scanner
+        const worksheet = workbook.addWorksheet(id)
+        worksheet.columns = [
+          { header: "Timestamp", key: "timestamp", width: 22 },
+          { header: "Scanner Type", key: "scannerType", width: 12 },
+          { header: "Line Number", key: "lineNumber", width: 15 },
+          { header: "Shift", key: "shift", width: 10 },
+          { header: "Batch Code", key: "batchCode", width: 15 },
+          { header: "Material Code", key: "materialCode", width: 15 },
+          { header: "Carton Serial", key: "cartonSerial", width: 15 },
+          { header: "Quantity", key: "quantity", width: 10 },
+          { header: "Status", key: "status", width: 10 },
+          { header: "Raw Data", key: "rawData", width: 30 },
+        ]
+        worksheet.getRow(1).font = { bold: true }
+        worksheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0E0E0" } }
 
-      // Define columns
-      worksheet.columns = [
-        { header: "Timestamp", key: "timestamp", width: 22 },
-        { header: "Line Number", key: "lineNumber", width: 15 },
-        { header: "Shift", key: "shift", width: 10 },
-        { header: "Batch Code", key: "batchCode", width: 15 },
-        { header: "Material Code", key: "materialCode", width: 15 },
-        { header: "Carton Serial", key: "cartonSerial", width: 15 },
-        { header: "Quantity", key: "quantity", width: 10 },
-        { header: "Status", key: "status", width: 10 },
-        { header: "Raw Data", key: "rawData", width: 30 },
-      ]
+        const BATCH_SIZE = 5000
+        let skip = 0
+        let hasMore = true
+        let scannerRecords = 0
+        let validRecords = 0
+        let invalidRecords = 0
+        let firstRecord = null
+        let lastRecord = null
 
-      // Style the header row
-      worksheet.getRow(1).font = { bold: true }
-      worksheet.getRow(1).fill = {
-        type: "pattern",
-        pattern: "solid",
-        fgColor: { argb: "FFE0E0E0" },
-      }
+        // Create scanner-specific query (if needed)
+        const scannerQuery = { ...query }
 
-      // Fetch data with pagination to handle large datasets
-      const BATCH_SIZE = 1000
-      let skip = 0
-      let hasMore = true
-      let scannerRecords = 0
+        while (hasMore) {
+          const data = await model.find(scannerQuery).sort({ timestamp: -1 }).skip(skip).limit(BATCH_SIZE).lean()
+          if (!data.length) {
+            hasMore = false
+            continue
+          }
 
-      while (hasMore) {
-        const data = await model.find(query).sort({ timestamp: -1 }).skip(skip).limit(BATCH_SIZE).lean()
+          // Update first and last record timestamps
+          if (!firstRecord && data.length > 0) {
+            firstRecord = new Date(data[data.length - 1].timestamp)
+          }
+          if (data.length > 0) {
+            lastRecord = new Date(data[0].timestamp)
+          }
 
-        if (data.length === 0) {
-          hasMore = false
-          continue
+          // Map each document into a row with converted timestamp
+          const rows = data.map((item) => {
+            const parsedData = item.parsedData || {}
+            if (item.isValid) validRecords++
+            else invalidRecords++
+
+            return {
+              timestamp: convertToIST(item.timestamp), // Convert to IST
+              scannerType: item.scannerType || getScannerType(id),
+              lineNumber: parsedData.lineNumber || "-",
+              shift: parsedData.shift || "-",
+              batchCode: parsedData.batchCode || "-",
+              materialCode: parsedData.materialCode || "-",
+              cartonSerial: parsedData.cartonSerial || "-",
+              quantity: parsedData.counter || 0,
+              status: item.isValid ? "Valid" : "Invalid",
+              rawData: item.rawData || "-",
+            }
+          })
+
+          worksheet.addRows(rows)
+          scannerRecords += data.length
+          skip += BATCH_SIZE
+          hasMore = data.length === BATCH_SIZE
         }
 
-        // Add rows to worksheet
-        data.forEach((item) => {
-          const parsedData = item.parsedData || {}
-          const row = {
-            timestamp: item.timestamp,
-            lineNumber: parsedData.lineNumber || "-",
-            shift: parsedData.shift || "-",
-            batchCode: parsedData.batchCode || "-",
-            materialCode: parsedData.materialCode || "-",
-            cartonSerial: parsedData.cartonSerial || "-",
-            quantity: parsedData.counter || 0,
-            status: item.isValid ? "Valid" : "Invalid",
-            rawData: item.rawData || "-",
+        // Format the timestamp column (Excel number format)
+        worksheet.getColumn("timestamp").numFmt = "yyyy-mm-dd hh:mm:ss"
+
+        // (Optional) Add conditional cell styling on the "status" column
+        worksheet.getColumn("status").eachCell({ includeEmpty: false }, (cell, rowNumber) => {
+          if (rowNumber > 1) {
+            if (cell.value === "Valid") {
+              cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE6F4EA" } }
+            } else if (cell.value === "Invalid") {
+              cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFCE8E6" } }
+            }
           }
-          worksheet.addRow(row)
-          scannerRecords++
         })
 
-        skip += BATCH_SIZE
-        hasMore = data.length === BATCH_SIZE
-      }
+        // Add a summary row at the bottom of the scanner's sheet
+        worksheet.addRow([])
+        const sheetSummaryRow = worksheet.addRow([
+          "Total Records",
+          getScannerType(id),
+          "",
+          "",
+          "",
+          "",
+          "",
+          scannerRecords,
+          "",
+        ])
+        sheetSummaryRow.font = { bold: true }
 
-      // Format timestamp column
-      worksheet.getColumn("timestamp").numFmt = "yyyy-mm-dd hh:mm:ss"
+        // Add summary data for this scanner into the overall summary sheet (convert dates to IST)
+        summarySheet.addRow({
+          scannerId: id,
+          scannerType: getScannerType(id),
+          total: scannerRecords,
+          valid: validRecords,
+          invalid: invalidRecords,
+          firstRecord: firstRecord ? convertToIST(firstRecord) : "N/A",
+          lastRecord: lastRecord ? convertToIST(lastRecord) : "N/A",
+        })
 
-      // Add conditional formatting for status column
-      worksheet.getColumn("status").eachCell({ includeEmpty: false }, (cell, rowNumber) => {
-        if (rowNumber > 1) {
-          if (cell.value === "Valid") {
-            cell.fill = {
-              type: "pattern",
-              pattern: "solid",
-              fgColor: { argb: "FFE6F4EA" }, // Light green
-            }
-          } else if (cell.value === "Invalid") {
-            cell.fill = {
-              type: "pattern",
-              pattern: "solid",
-              fgColor: { argb: "FFFCE8E6" }, // Light red
-            }
-          }
-        }
+        totalRecords += scannerRecords
       })
-
-      // Add a summary row at the bottom
-      worksheet.addRow([])
-      const summaryRow = worksheet.addRow(["Total Records", "", "", "", "", "", "", scannerRecords, ""])
-      summaryRow.font = { bold: true }
-
-      totalRecords += scannerRecords
-    }
-
-    // Update the filter sheet with total records
-    filterSheet.addRow({ filter: "Total Records", value: totalRecords })
-
-    // Set response headers
-    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename=scanner-data-${new Date().toISOString().split("T")[0]}.xlsx`,
     )
 
-    // Write to response
+    // Add a total row to the summary sheet
+    const totalRow = summarySheet.addRow({
+      scannerId: "TOTAL",
+      scannerType: "",
+      total: totalRecords,
+      valid: "",
+      invalid: "",
+      firstRecord: "",
+      lastRecord: "",
+    })
+    totalRow.font = { bold: true }
+
+    // Update the filter sheet with total records information
+    filterSheet.addRow({ filter: "Total Records", value: totalRecords })
+
+    // Set response headers for Excel download
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    res.setHeader("Content-Disposition", `attachment; filename=scanner-data-${new Date().toISOString().split("T")[0]}.xlsx`)
+
+    // Write the workbook to the response stream and end the response
     await workbook.xlsx.write(res)
     res.end()
   } catch (error) {
@@ -271,18 +347,17 @@ router.get("/export-excel", async (req, res) => {
   }
 })
 
-// Export summary data to Excel
+// Endpoint to export summary data to Excel
 router.get("/export-summary", async (req, res) => {
+  console.log("Export Summary endpoint accessed with query:", req.query)
+
   try {
     const { startDate, endDate, startTime, endTime, lineNumber, shift, batchCode, materialCode } = req.query
-
-    // Build query with optional filters
     const query = {}
 
     // Date and time filtering
     if (startDate || endDate || startTime || endTime) {
       query.timestamp = {}
-
       if (startDate) {
         const start = new Date(startDate)
         if (startTime) {
@@ -293,7 +368,6 @@ router.get("/export-summary", async (req, res) => {
         }
         query.timestamp.$gte = start
       }
-
       if (endDate) {
         const end = new Date(endDate)
         if (endTime) {
@@ -306,46 +380,26 @@ router.get("/export-summary", async (req, res) => {
       }
     }
 
-    // Add other filters if provided
-    if (lineNumber) {
-      query["parsedData.lineNumber"] = lineNumber
-    }
+    // Additional filters
+    if (lineNumber) query["parsedData.lineNumber"] = lineNumber
+    if (shift) query["parsedData.shift"] = shift
+    if (batchCode) query["parsedData.batchCode"] = batchCode
+    if (materialCode) query["parsedData.materialCode"] = materialCode
 
-    if (shift) {
-      query["parsedData.shift"] = shift
-    }
-
-    if (batchCode) {
-      query["parsedData.batchCode"] = batchCode
-    }
-
-    if (materialCode) {
-      query["parsedData.materialCode"] = materialCode
-    }
-
-    // Create a new Excel workbook
     const workbook = new ExcelJS.Workbook()
     workbook.creator = "Scanner System"
     workbook.lastModifiedBy = "Scanner System"
     workbook.created = new Date()
     workbook.modified = new Date()
 
-    // Add a filter summary worksheet
+    // Filter summary worksheet
     const filterSheet = workbook.addWorksheet("Filter Criteria")
     filterSheet.columns = [
       { header: "Filter", key: "filter", width: 20 },
       { header: "Value", key: "value", width: 30 },
     ]
-
-    // Style the header row
     filterSheet.getRow(1).font = { bold: true }
-    filterSheet.getRow(1).fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: "FFE0E0E0" },
-    }
-
-    // Add filter criteria
+    filterSheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0E0E0" } }
     const filters = [
       { filter: "Start Date", value: startDate ? new Date(startDate).toLocaleDateString() : "Not specified" },
       { filter: "End Date", value: endDate ? new Date(endDate).toLocaleDateString() : "Not specified" },
@@ -357,15 +411,10 @@ router.get("/export-summary", async (req, res) => {
       { filter: "Material Code", value: materialCode || "Not specified" },
       { filter: "Export Date", value: new Date().toLocaleString() },
     ]
+    filters.forEach((item) => filterSheet.addRow(item))
 
-    filters.forEach((item) => {
-      filterSheet.addRow(item)
-    })
-
-    // Create summary worksheet
+    // Summary worksheet for overall scanner summary
     const summarySheet = workbook.addWorksheet("Summary")
-
-    // Define columns for summary
     summarySheet.columns = [
       { header: "Scanner ID", key: "scannerId", width: 15 },
       { header: "Total Records", key: "total", width: 15 },
@@ -374,16 +423,9 @@ router.get("/export-summary", async (req, res) => {
       { header: "Error Rate (%)", key: "errorRate", width: 15 },
       { header: "Date Range", key: "dateRange", width: 30 },
     ]
-
-    // Style the header row
     summarySheet.getRow(1).font = { bold: true }
-    summarySheet.getRow(1).fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: "FFE0E0E0" },
-    }
+    summarySheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0E0E0" } }
 
-    // Get summary data for each scanner
     let totalAllScanners = 0
 
     for (const [scannerId, model] of Object.entries(scannerModels)) {
@@ -391,21 +433,18 @@ router.get("/export-summary", async (req, res) => {
       const validCount = await model.countDocuments({ ...query, isValid: true })
       const invalidCount = await model.countDocuments({ ...query, isValid: false })
       const errorRate = totalCount > 0 ? (invalidCount / totalCount) * 100 : 0
-
       totalAllScanners += totalCount
 
-      // Get date range
+      // Get date range for the scanner and convert to IST
       const firstRecord = await model.findOne(query).sort({ timestamp: 1 }).limit(1)
       const lastRecord = await model.findOne(query).sort({ timestamp: -1 }).limit(1)
-
       let dateRange = "No data"
       if (firstRecord && lastRecord) {
-        const firstDate = new Date(firstRecord.timestamp).toLocaleString()
-        const lastDate = new Date(lastRecord.timestamp).toLocaleString()
+        const firstDate = convertToIST(firstRecord.timestamp)
+        const lastDate = convertToIST(lastRecord.timestamp)
         dateRange = firstDate === lastDate ? firstDate : `${firstDate} to ${lastDate}`
       }
 
-      // Add row to summary sheet
       summarySheet.addRow({
         scannerId,
         total: totalCount,
@@ -416,20 +455,15 @@ router.get("/export-summary", async (req, res) => {
       })
     }
 
-    // Add total row
     const totalRow = summarySheet.addRow({
       scannerId: "TOTAL",
       total: totalAllScanners,
     })
     totalRow.font = { bold: true }
-
-    // Format error rate column
     summarySheet.getColumn("errorRate").numFmt = '0.00"%"'
 
-    // Create hourly stats worksheet
+    // Hourly statistics worksheet
     const hourlySheet = workbook.addWorksheet("Hourly Statistics")
-
-    // Define columns for hourly stats
     hourlySheet.columns = [
       { header: "Date", key: "date", width: 12 },
       { header: "Hour", key: "hour", width: 8 },
@@ -438,16 +472,9 @@ router.get("/export-summary", async (req, res) => {
       { header: "Invalid Records", key: "invalid", width: 15 },
       { header: "Total Records", key: "total", width: 15 },
     ]
-
-    // Style the header row
     hourlySheet.getRow(1).font = { bold: true }
-    hourlySheet.getRow(1).fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: "FFE0E0E0" },
-    }
+    hourlySheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0E0E0" } }
 
-    // Get hourly stats for each scanner
     for (const [scannerId, model] of Object.entries(scannerModels)) {
       const hourlyStats = await model.aggregate([
         { $match: query },
@@ -463,26 +490,16 @@ router.get("/export-summary", async (req, res) => {
         },
         {
           $group: {
-            _id: {
-              date: "$_id.date",
-              hour: "$_id.hour",
-            },
-            stats: {
-              $push: {
-                isValid: "$_id.isValid",
-                count: "$count",
-              },
-            },
+            _id: { date: "$_id.date", hour: "$_id.hour" },
+            stats: { $push: { isValid: "$_id.isValid", count: "$count" } },
           },
         },
         { $sort: { "_id.date": 1, "_id.hour": 1 } },
       ])
 
-      // Add rows to hourly stats sheet
       hourlyStats.forEach((item) => {
         const validCount = item.stats.find((s) => s.isValid)?.count || 0
         const invalidCount = item.stats.find((s) => !s.isValid)?.count || 0
-
         hourlySheet.addRow({
           date: item._id.date,
           hour: item._id.hour,
@@ -494,17 +511,14 @@ router.get("/export-summary", async (req, res) => {
       })
     }
 
-    // Update the filter sheet with total records
     filterSheet.addRow({ filter: "Total Records", value: totalAllScanners })
 
-    // Set response headers
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename=scanner-summary-${new Date().toISOString().split("T")[0]}.xlsx`,
+      `attachment; filename=scanner-summary-${new Date().toISOString().split("T")[0]}.xlsx`
     )
 
-    // Write to response
     await workbook.xlsx.write(res)
     res.end()
   } catch (error) {
@@ -513,5 +527,16 @@ router.get("/export-summary", async (req, res) => {
   }
 })
 
-module.exports = router
+// Endpoint to export by scanner type (redirect to export-excel)
+router.get("/export-by-type", async (req, res) => {
+  const { type, startDate, endDate } = req.query
+  if (!type || !["pouch", "tin", "dispatch"].includes(type)) {
+    return res.status(400).json({ error: "Invalid scanner type. Must be 'pouch', 'tin', or 'dispatch'" })
+  }
+  const redirectUrl = `/api/export-excel?scannerType=${type}${startDate ? `&startDate=${startDate}` : ""}${
+    endDate ? `&endDate=${endDate}` : ""
+  }`
+  res.redirect(redirectUrl)
+})
 
+module.exports = router

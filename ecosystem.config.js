@@ -10,7 +10,7 @@ module.exports = {
       env: {
         NODE_ENV: "production",
         API_PORT: 3001,
-        CLIENT_URL: "http://10.255.20.6:3000", // Replace with your actual server IP
+        CLIENT_URL: "http://localhost:3000", // Replace with your actual server IP
       },
       log_date_format: "YYYY-MM-DD HH:mm:ss",
       error_file: "logs/api-error.log",
@@ -31,7 +31,7 @@ module.exports = {
       max_memory_restart: "1G",
       env: {
         NODE_ENV: "production",
-        API_URL: "http://10.255.20.6:3001", // Replace with your actual server IP
+        API_URL: "http://localhost:8080", // Replace with your actual server IP
       },
       log_date_format: "YYYY-MM-DD HH:mm:ss",
       error_file: "logs/client-error.log",
